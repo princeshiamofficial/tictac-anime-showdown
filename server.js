@@ -37,7 +37,7 @@ async function setup() {
     io.on('connection', (socket) => {
         console.log('User connected:', socket.id);
 
-        socket.on('join-room', async (roomId) => {
+        socket.on('join-room', async ({ roomId, playerId }) => {
             socket.join(roomId);
 
             let roomData = await db.get('SELECT * FROM rooms WHERE id = ?', [roomId]);
@@ -64,16 +64,19 @@ async function setup() {
                 roomData.scores = { X: roomData.scoreX, O: roomData.scoreO };
             }
 
-            // Assign role
+            // Assign role based on unique playerId (not socket id)
             let players = Array.isArray(roomData.players) ? roomData.players : JSON.parse(roomData.players || '[]');
-            if (players.length < 2 && !players.find(p => p.id === socket.id)) {
+            let existingPlayer = players.find(p => p.playerId === playerId);
+
+            if (existingPlayer) {
+                socket.emit('player-assignment', existingPlayer.role);
+            } else if (players.length < 2) {
                 const role = players.length === 0 ? 'X' : 'O';
-                players.push({ id: socket.id, role });
+                players.push({ playerId, role });
                 await db.run('UPDATE rooms SET players = ? WHERE id = ?', [JSON.stringify(players), roomId]);
                 socket.emit('player-assignment', role);
             } else {
-                const existing = players.find(p => p.id === socket.id);
-                socket.emit('player-assignment', existing ? existing.role : 'viewer');
+                socket.emit('player-assignment', 'viewer');
             }
 
             // Send full state

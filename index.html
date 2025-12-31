@@ -162,6 +162,13 @@
         let scores = { X: 0, O: 0 };
         let myRole = null; // 'X', 'O', or 'viewer'
 
+        // Persistent Player ID for device identification
+        let playerId = localStorage.getItem('tictac_player_id');
+        if (!playerId) {
+            playerId = Math.random().toString(36).substring(2, 15);
+            localStorage.setItem('tictac_player_id', playerId);
+        }
+
         // Get room ID from URL
         const urlParams = new URLSearchParams(window.location.search);
         let roomId = urlParams.get('room');
@@ -171,7 +178,7 @@
             const newRoomId = Math.random().toString(36).substring(2, 9);
             window.location.search = `?room=${newRoomId}`;
         } else {
-            socket.emit('join-room', roomId);
+            socket.emit('join-room', { roomId, playerId });
         }
 
         socket.on('player-assignment', (role) => {
