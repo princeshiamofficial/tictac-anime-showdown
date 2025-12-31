@@ -80,7 +80,8 @@ async function setup() {
             socket.emit('init-state', {
                 gameState: typeof roomData.gameState === 'string' ? JSON.parse(roomData.gameState) : roomData.gameState,
                 currentPlayer: roomData.currentPlayer,
-                scores: { X: roomData.scoreX, O: roomData.scoreO }
+                scores: { X: roomData.scoreX, O: roomData.scoreO },
+                isFinished: roomData.isFinished
             });
         });
 

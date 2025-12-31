@@ -186,14 +186,18 @@
             gameState = room.gameState;
             currentPlayer = room.currentPlayer;
             scores = room.scores;
+            active = !room.isFinished;
             updateUI();
+            if (room.isFinished) checkGameEnd();
         });
 
         socket.on('update-game', (room) => {
             gameState = room.gameState;
             currentPlayer = room.currentPlayer;
+            if (room.scores) scores = room.scores;
+            active = !room.isFinished;
             updateUI();
-            checkGameEnd();
+            if (room.isFinished) checkGameEnd();
         });
 
         function init() {
