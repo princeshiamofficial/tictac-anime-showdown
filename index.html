@@ -140,6 +140,10 @@
                 <i class="fa-solid fa-share-nodes"></i>
             </button>
         </div>
+
+        <div class="mt-4 text-white/50 text-xs tracking-widest uppercase italic font-sans">
+            Developer By <span class="text-cyan-400 font-bold">Mehan Ahmed</span>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -162,7 +166,11 @@
         const urlParams = new URLSearchParams(window.location.search);
         let roomId = urlParams.get('room');
 
-        if (roomId) {
+        if (!roomId) {
+            // Auto-generate room ID if missing
+            const newRoomId = Math.random().toString(36).substring(2, 9);
+            window.location.search = `?room=${newRoomId}`;
+        } else {
             socket.emit('join-room', roomId);
         }
 
@@ -202,32 +210,8 @@
         }
 
         function handleMove(i) {
-            if (!roomId) {
-                // Local play if no room
-                playLocal(i);
-                return;
-            }
-
             if (myRole !== currentPlayer || gameState[i] !== "" || !active) return;
-
             socket.emit('make-move', { roomId, index: i, player: myRole });
-        }
-
-        function playLocal(i) {
-            if (gameState[i] || !active) return;
-            gameState[i] = currentPlayer;
-            updateUI();
-
-            const winIndices = checkWin();
-            if (winIndices) {
-                endGame(winIndices);
-            } else if (!gameState.includes("")) {
-                status.innerText = "DRAW GAME!";
-                active = false;
-            } else {
-                currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-                updateStatusText();
-            }
         }
 
         function updateUI() {
@@ -254,9 +238,6 @@
                     `<span class="text-yellow-400">YOUR TURN! (${myRole})</span>` :
                     `Player <span class="${currentPlayer === 'X' ? 'text-cyan-400' : 'text-pink-500'}">${currentPlayer}</span> Turn...`;
             }
-            if (!roomId) {
-                status.innerHTML = `Player <span class="${currentPlayer === 'X' ? 'text-cyan-400' : 'text-pink-500'}">${currentPlayer}</span> Turn!`;
-            }
         }
 
         function checkGameEnd() {
@@ -273,11 +254,6 @@
             const winner = gameState[winIndices[0]];
             status.innerHTML = `<span class="text-yellow-400">K.O. PLAYER ${winner}!</span>`;
             winIndices.forEach(idx => board.children[idx].classList.add('winner-cell'));
-            if (!roomId) {
-                scores[winner]++;
-                scoreXEl.innerText = scores.X;
-                scoreOEl.innerText = scores.O;
-            }
             active = false;
         }
 
@@ -292,28 +268,11 @@
         }
 
         resetBtn.onclick = () => {
-            if (roomId) {
-                socket.emit('reset-game', roomId);
-            } else {
-                gameState = Array(9).fill("");
-                active = true;
-                currentPlayer = 'X';
-                updateUI();
-            }
+            socket.emit('reset-game', roomId);
         };
 
         inviteBtn.onclick = () => {
-            if (!roomId) {
-                // Generate a unique room ID
-                const newRoomId = Math.random().toString(36).substring(2, 9);
-                const joinUrl = `${window.location.origin}${window.location.pathname}?room=${newRoomId}`;
-
-                // Redirect user to their own room
-                window.location.href = joinUrl;
-            } else {
-                const joinUrl = window.location.href;
-                copyLink(joinUrl);
-            }
+            copyLink(window.location.href);
         };
 
         function copyLink(url) {
