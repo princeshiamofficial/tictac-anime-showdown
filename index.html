@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicTac Anime: Showdown</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Permanent+Marker&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --anime-cyan: #00f2ff;
+            --anime-pink: #ff007a;
+        }
+
+        body {
+            background-color: #050505;
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(20, 20, 20, 0.9), rgba(5, 5, 5, 1)),
+                repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.02) 0px, rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 10px);
+            font-family: 'Permanent Marker', cursive;
+            overflow: hidden;
+        }
+
+        /* Action Lines Background */
+        .speed-lines {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background-image: radial-gradient(circle at center, transparent 30%, black 100%),
+                repeating-conic-gradient(from 0deg, transparent 0deg 2deg, rgba(255, 255, 255, 0.05) 3deg 4deg);
+            pointer-events: none;
+        }
+
+        .anime-card {
+            background: #111;
+            border: 4px solid #000;
+            box-shadow: 8px 8px 0px #000;
+            transform: skew(-1deg);
+        }
+
+        .cell {
+            background: #1a1a1a;
+            border: 3px solid #000;
+            box-shadow: 4px 4px 0px #000;
+            transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-family: 'Bangers', cursive;
+        }
+
+        .cell:hover {
+            transform: scale(1.05) translate(-2px, -2px);
+            box-shadow: 8px 8px 0px #000;
+            background: #222;
+        }
+
+        .cell:active {
+            transform: scale(0.95);
+            box-shadow: 2px 2px 0px #000;
+        }
+
+        .x-move {
+            color: var(--anime-cyan);
+            text-shadow: 0 0 15px var(--anime-cyan), 4px 4px 0px #000;
+            animation: strike 0.2s ease-out;
+        }
+
+        .o-move {
+            color: var(--anime-pink);
+            text-shadow: 0 0 15px var(--anime-pink), 4px 4px 0px #000;
+            animation: strike 0.2s ease-out;
+        }
+
+        @keyframes strike {
+            0% {
+                transform: scale(3) rotate(15deg);
+                opacity: 0;
+            }
+
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        .winner-cell {
+            background: #fff !important;
+            color: #000 !important;
+            text-shadow: none !important;
+            animation: flash 0.5s infinite alternate;
+        }
+
+        @keyframes flash {
+            from {
+                filter: brightness(1);
+            }
+
+            to {
+                filter: brightness(1.5) drop-shadow(0 0 10px white);
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+    <div class="speed-lines"></div>
+
+    <div class="w-full max-w-sm flex justify-between items-center mb-10 anime-card p-4 relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-pink-500"></div>
+        <div class="text-center">
+            <p class="text-[10px] text-cyan-400 uppercase tracking-tighter">Combatant X</p>
+            <p id="scoreX" class="text-3xl text-white">0</p>
+        </div>
+        <div class="text-2xl text-white italic">VS</div>
+        <div class="text-center">
+            <p class="text-[10px] text-pink-500 uppercase tracking-tighter">Combatant O</p>
+            <p id="scoreO" class="text-3xl text-white">0</p>
+        </div>
+    </div>
+
+    <div id="board" class="grid grid-cols-3 gap-4 p-2">
+    </div>
+
+    <div class="w-full max-w-sm mt-10 flex flex-col items-center gap-6">
+        <div class="relative">
+            <h2 id="status"
+                class="text-2xl text-white tracking-widest text-center px-6 py-2 bg-black border-2 border-white skew-x-[-10deg] uppercase">
+                Player <span class="text-cyan-400">X</span> Turn!
+            </h2>
+        </div>
+
+        <div class="flex w-full gap-4">
+            <button id="resetBtn"
+                class="flex-1 anime-card py-3 text-white hover:bg-white hover:text-black transition-colors flex items-center justify-center gap-2 group">
+                <i class="fa-solid fa-bolt text-yellow-400 group-hover:rotate-180 transition-transform"></i>
+                <span>RESTART MATCH</span>
+            </button>
+            <button id="inviteBtn"
+                class="w-14 anime-card text-pink-500 hover:bg-pink-500 hover:text-white transition-colors flex items-center justify-center">
+                <i class="fa-solid fa-share-nodes"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const board = document.getElementById('board');
+        const status = document.getElementById('status');
+        const scoreXEl = document.getElementById('scoreX');
+        const scoreOEl = document.getElementById('scoreO');
+        const inviteBtn = document.getElementById('inviteBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        let currentPlayer = 'X';
+        let gameState = Array(9).fill("");
+        let active = true;
+        let scores = { X: 0, O: 0 };
+        let myRole = null; // 'X', 'O', or 'viewer'
+
+        // Get room ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        let roomId = urlParams.get('room');
+
+        if (roomId) {
+            socket.emit('join-room', roomId);
+        }
+
+        socket.on('player-assignment', (role) => {
+            myRole = role;
+            console.log('Assigned role:', myRole);
+            if (myRole === 'viewer') {
+                status.innerText = "SPECTATING MODE";
+            }
+        });
+
+        socket.on('init-state', (room) => {
+            gameState = room.gameState;
+            currentPlayer = room.currentPlayer;
+            scores = room.scores;
+            updateUI();
+        });
+
+        socket.on('update-game', (room) => {
+            gameState = room.gameState;
+            currentPlayer = room.currentPlayer;
+            updateUI();
+            checkGameEnd();
+        });
+
+        function init() {
+            board.innerHTML = '';
+            gameState.forEach((cellValue, i) => {
+                const cell = document.createElement('div');
+                cell.className = 'cell w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center text-5xl cursor-pointer';
+                cell.innerHTML = cellValue;
+                if (cellValue === 'X') cell.classList.add('x-move');
+                if (cellValue === 'O') cell.classList.add('o-move');
+                cell.onclick = () => handleMove(i);
+                board.appendChild(cell);
+            });
+        }
+
+        function handleMove(i) {
+            if (!roomId) {
+                // Local play if no room
+                playLocal(i);
+                return;
+            }
+
+            if (myRole !== currentPlayer || gameState[i] !== "" || !active) return;
+
+            socket.emit('make-move', { roomId, index: i, player: myRole });
+        }
+
+        function playLocal(i) {
+            if (gameState[i] || !active) return;
+            gameState[i] = currentPlayer;
+            updateUI();
+
+            const winIndices = checkWin();
+            if (winIndices) {
+                endGame(winIndices);
+            } else if (!gameState.includes("")) {
+                status.innerText = "DRAW GAME!";
+                active = false;
+            } else {
+                currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+                updateStatusText();
+            }
+        }
+
+        function updateUI() {
+            board.innerHTML = '';
+            gameState.forEach((val, i) => {
+                const cell = document.createElement('div');
+                cell.className = 'cell w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center text-5xl cursor-pointer';
+                cell.innerHTML = val;
+                if (val === 'X') cell.classList.add('x-move');
+                if (val === 'O') cell.classList.add('o-move');
+                cell.onclick = () => handleMove(i);
+                board.appendChild(cell);
+            });
+            updateStatusText();
+            scoreXEl.innerText = scores.X;
+            scoreOEl.innerText = scores.O;
+        }
+
+        function updateStatusText() {
+            if (myRole === 'viewer') {
+                status.innerHTML = `Player <span class="${currentPlayer === 'X' ? 'text-cyan-400' : 'text-pink-500'}">${currentPlayer}</span> Turn (Viewing)`;
+            } else {
+                status.innerHTML = currentPlayer === myRole ?
+                    `<span class="text-yellow-400">YOUR TURN! (${myRole})</span>` :
+                    `Player <span class="${currentPlayer === 'X' ? 'text-cyan-400' : 'text-pink-500'}">${currentPlayer}</span> Turn...`;
+            }
+            if (!roomId) {
+                status.innerHTML = `Player <span class="${currentPlayer === 'X' ? 'text-cyan-400' : 'text-pink-500'}">${currentPlayer}</span> Turn!`;
+            }
+        }
+
+        function checkGameEnd() {
+            const winIndices = checkWin();
+            if (winIndices) {
+                endGame(winIndices);
+            } else if (!gameState.includes("")) {
+                status.innerText = "DRAW GAME!";
+                active = false;
+            }
+        }
+
+        function endGame(winIndices) {
+            const winner = gameState[winIndices[0]];
+            status.innerHTML = `<span class="text-yellow-400">K.O. PLAYER ${winner}!</span>`;
+            winIndices.forEach(idx => board.children[idx].classList.add('winner-cell'));
+            if (!roomId) {
+                scores[winner]++;
+                scoreXEl.innerText = scores.X;
+                scoreOEl.innerText = scores.O;
+            }
+            active = false;
+        }
+
+        function checkWin() {
+            const wins = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+            for (let comb of wins) {
+                if (gameState[comb[0]] && gameState[comb[0]] === gameState[comb[1]] && gameState[comb[0]] === gameState[comb[2]]) {
+                    return comb;
+                }
+            }
+            return null;
+        }
+
+        resetBtn.onclick = () => {
+            if (roomId) {
+                socket.emit('reset-game', roomId);
+            } else {
+                gameState = Array(9).fill("");
+                active = true;
+                currentPlayer = 'X';
+                updateUI();
+            }
+        };
+
+        inviteBtn.onclick = () => {
+            if (!roomId) {
+                // Generate a unique room ID
+                const newRoomId = Math.random().toString(36).substring(2, 9);
+                const joinUrl = `${window.location.origin}${window.location.pathname}?room=${newRoomId}`;
+
+                // Redirect user to their own room
+                window.location.href = joinUrl;
+            } else {
+                const joinUrl = window.location.href;
+                copyLink(joinUrl);
+            }
+        };
+
+        function copyLink(url) {
+            if (navigator.share) {
+                navigator.share({ title: 'TicTac Anime', text: 'Challenge me!', url: url });
+            } else {
+                navigator.clipboard.writeText(url);
+                showToast("Match Link Copied!");
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-20 bg-white text-black px-6 py-2 rounded-full font-bold shadow-lg animate-bounce';
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
